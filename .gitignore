@@ -1,3 +1,8 @@
+
+gitignore
 # Ignore all virtual environments
 **/venv/
 **/env/
+**/__pycache__
+chumma.py
+.env

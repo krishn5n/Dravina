@@ -21,6 +21,8 @@ def mutual_funds():
     options.add_argument(f"--user-data-dir={profile_path}")
     options.add_argument("--memory-pressure-off")
     options.add_argument("--max_old_space_size=4096")
+    options.add_argument("--log-level=3")  # Suppresses INFO and WARNING
+    options.add_experimental_option('excludeSwitches', ['enable-logging'])  # Suppress DevTools log
     options.add_argument("--disable-background-networking")
     options.add_argument("--disable-background-timer-throttling")
     options.add_argument("--headless=new")  # Use --headless=new for modern headless mode
@@ -77,13 +79,13 @@ def mutual_funds():
 
 
             listval = {
-                "Title": title,
-                "Tags": tags,
-                "AUM": aum,
-                "Current Value": current_value,
-                "Decrease From Last Time": dec,
-                "Return": retval,
-                "Expense Ratio": expense_ratio
+                "title": title,
+                "tags": tags,
+                "aum": aum,
+                "current value": current_value,
+                "decrease from last time": dec,
+                "return": retval,
+                "expense ratio": expense_ratio
             }
             results.append(listval)
         except Exception as e:
@@ -99,6 +101,8 @@ def mutual_funds():
 def gold_silver_details():
     options = EdgeOptions()
     options.add_argument("--start-maximized")
+    options.add_argument("--log-level=3")  # Suppresses INFO and WARNING
+    options.add_experimental_option('excludeSwitches', ['enable-logging'])  # Suppress DevTools log
     options.add_argument(f"--user-data-dir={profile_path}")
     options.add_argument("--memory-pressure-off")
     options.add_argument("--max_old_space_size=4096")
@@ -147,7 +151,7 @@ def gold_silver_details():
     final['silver'] = silverval
     return final
 
-#Function to return the list of information about each of the 
+#Function to return the list of information about each of the types of mutual fund
 #No input
 #Output -> Set of dictionary values
 def mutual_fund_details():
@@ -163,21 +167,29 @@ def mutual_fund_details():
         if element.name == "h2":
             if len(currh3)!=0 and len(currp)!=0:
                 retval[currh2][currh3] = currp
-            currh2 = element.get_text(strip=True)
-            retval[currh2] = {}
+
+            currh2 = element.get_text(strip=True).lower()
+
+            if "based on" in currh2:
+                idx = currh2.find("based on")
+                idx = idx+9
+                currh2 = currh2[idx:]
+                retval[currh2] = {}
+            else:
+                currh2 = ""
+
             currp = ""
             currh3 = ""
         elif element.name=="h3":
             if len(currh2)!=0 and len(currh3)!=0:
                 retval[currh2][currh3] = currp
             
-            currh3 = element.get_text(strip=True)
+            currh3 = element.get_text(strip=True).lower()
             retval[currh2][currh3] = ""
             currp = ""
         else:
             if len(currh3) != 0:
-                currp = currp+ " "+element.get_text(strip=True)
+                currp = currp+ " "+ element.get_text(strip=True).lower()
 
     return retval
 
-print(mutual_fund_details())
