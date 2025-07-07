@@ -4,6 +4,7 @@ import os
 from google import genai
 from google.genai import types
 import getkb
+from pydantic import BaseModel
 from typing import List
 from dotenv import load_dotenv
 
@@ -146,6 +147,53 @@ def details_to_types(risk: str, time: str):
     except Exception as e:
         print(f"Error in details_to_types: {e}")
         return []
+    
+class Userbehav(BaseModel):
+    risk_tolerance:str
+    time_horizon:str
+
+def analyze_user_profile(query):
+    system_prompt = f'''
+    You are a professional psychologist who analyzes human emotions to provide insights on an individuals risk mindset and also analyse the duration of funds.
+
+    #Guidelines
+    - Risk can be either 'conservative', 'moderate' or 'aggressive' or if none match 'ready for anything'
+      - Example: "high growth needed" - aggressive 
+      - Example: "steady growth needed" - moderate
+      - Example: "not sure about risk" - conservative
+      - Example: "worried about losing" - conservative
+      - Example: "as soon as possible" - aggressive
+    - Time can be either 'long term' , 'medium term' or 'short term' or if none match 'ready for anything'
+      - Example: "till retirement" - long term
+      - Example: "for the next 10 years" - long term
+      - Example: "immediate" - short term
+    '''
+    client = genai.Client()
+    config = types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(
+            thinking_budget=-1  # Dynamic thinking
+        ),
+        response_mime_type="application/json",
+        response_schema=Userbehav
+    )
+    
+    contents = [
+        types.Content(
+            role="user", parts=[types.Part(text=f"{system_prompt}")]
+        ),
+        types.Content(
+            role="user", parts=[types.Part(text=f"{query}")]
+        )
+    ]
+    response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=contents,
+    config=config
+    )
+
+    retval:Userbehav = response.parsed
+    return retval
+
 
 def call_tool(name, args):
     """Enhanced tool calling with error handling"""
@@ -163,30 +211,84 @@ def call_tool(name, args):
         return {"error": f"Error executing {name}: {str(e)}"}
 
 def get_finance_advice(query):
-    system_prompt = '''
-    You are a helpful finance assistant that provides personalized investment insights using reasoning and available tools.
+    # Analyze user profile for better context
+    user_profile = analyze_user_profile(query)
+    print(f"User Profile Analysis: {user_profile}")
+    
+    system_prompt = f'''
+    You are a professional financial advisor who provides personalized investment insights using reasoning and available tools.
 
+    # USER PROFILE ANALYSIS
+    Based on the user's input, here's their profile:
+    - Risk Tolerance: {user_profile.risk_tolerance}
+    - Time Horizon: {user_profile.time_horizon}
+    
     # MANDATORY TOOL USAGE WORKFLOW
     You MUST follow this exact sequence:
     
-    1. **STEP 1 - Get Fund Types**: Call `details_to_types` based on user's risk appetite and investment timeline
+    1. **STEP 1 - Analyze User Profile**: Carefully analyze the user's:
+       - Age, income, expenses, and savings capacity
+       - Investment timeline and goals
+       - Risk tolerance and Time Horizon as mentioned
+       - Financial behavior patterns and emotional indicators
     
-    2. **STEP 2 - Get Specific Funds (MANDATORY)**: Call `get_mutual_funds_set` with fund types as tags
+    2. **STEP 2 - Get Fund Types**: Call `details_to_types` based on user's risk appetite and investment timeline
+    
+    3. **STEP 3 - Get Specific Funds (MANDATORY)**: Call `get_mutual_funds_set` with fund types as tags
        - CRITICAL: Remove the word "fund" from tags when calling this tool
        - Example: "Large Cap Funds" → use tag "large cap"
        - Example: "Multi Cap Funds" → use tag "multi cap"  
        - Example: "Equity Funds" → use tag "equity"
        - Example: "Debt Funds" → use tag "debt"
     
-    3. **STEP 3 - Optional Details**: Call `get_info_about_fund` for additional fund type information if needed
+    4. **STEP 4 - Make Strategic Recommendations**: 
+       - **DO NOT list all available funds**
+       - **SELECT 2-4 specific funds maximum** based on user's profile
+       - **ALLOCATE percentage of monthly savings** to each selected fund
+       - **JUSTIFY each selection** with reasoning based on user's situation
+       - Use the following prioritization for each mutual fund:
+
+            1. Prefer **higher 'return'** values. This is the most important metric (highest weight).
+            2. Among funds with similar returns, prefer funds with **lower 'expense ratio'** (cost matters more in the long run).
+            3. If both return and expense ratio are similar, prefer funds with **higher 'aum'** (indicates popularity and stability).
+            4. Avoid funds with significant **'decrease from last time'** as a flag for decrease of funds using the return.
+            5. If needed to break ties further, use the **'tags'** field:
+            - Prefer thematic tags if looking for sectoral/thematic bets.
+
+            Do not rely on **'current value'** for comparison; it reflects unit NAV, which is not an indicator of performance.
     
-    4. **STEP 4 - Final Result**: Provide recommendations with actual fund names and details
-    
-    # CRITICAL RULES
+    5. **STEP 5 - Optional Details**: Call `get_info_about_fund` using the category and fund type for additional context if needed
+
+    # CRITICAL ADVISORY RULES
     - **NEVER provide final results without calling get_mutual_funds_set**
     - **ALWAYS convert fund types to proper tags by removing "fund" and "funds"**
-    - **Provide specific fund names, not just fund types**
+    - **SELECT specific funds, don't list all options**
+    - **ALLOCATE percentages based on user's risk profile and timeline**
+    - **JUSTIFY selections with personalized reasoning**
+    - **Consider emotional indicators in user's language**
     - **Start final results with "Result - " in markdown format**
+
+    # USER ANALYSIS FRAMEWORK
+    When analyzing users, consider:
+    - **Risk Tolerance Indicators**: 
+      - "I don't know if I'm ready to take risk" = Conservative approach
+      - "I want aggressive growth" = High risk tolerance
+      - "I'm worried about losing money" = Very conservative
+    - **Time Horizon Impact**:
+      - Long-term goals (10+ years) = More equity allocation
+      - Medium-term goals (3-10 years) = Balanced approach
+      - Short-term goals (<3 years) = More debt/liquid funds
+    - **Age-based Allocation Rule**: 
+      - Equity allocation = 100 - age (as starting point)
+      - Adjust based on risk tolerance and goals
+
+    # PERSONALIZED RECOMMENDATION FORMAT
+    Your final recommendations should include:
+    1. **Portfolio Allocation Strategy** (e.g., 60% equity, 40% debt)
+    2. **2-4 Selected Funds** with specific allocation percentages
+    3. **Monthly Investment Amount** for each fund
+    4. **Reasoning** for each selection based on user's profile
+    5. **Review Timeline** (when to reassess)
 
     # Tax Information to Include
     - Investment money are taxable
@@ -248,7 +350,7 @@ def get_finance_advice(query):
                         
                         print(f"Calling tool: {name} with args: {args}")
                         result = call_tool(name, args)
-                        print(f"Tool result obtained",len(result))
+                        print(f"Tool result: {result}")
                         
                         # If details_to_types was called, suggest calling get_mutual_funds_set next
                         if name == "details_to_types":
