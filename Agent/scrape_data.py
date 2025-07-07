@@ -34,16 +34,24 @@ def mutual_funds():
 
     driver.get("https://www.etmoney.com/mutual-funds/all-funds-listing")
     wait = WebDriverWait(driver, 10)
-    for i in range(5):
+    total_funds = driver.find_element(By.CLASS_NAME, "total-hidden-funds-count").text.strip()
+    cnt = int(total_funds)//20
+    for i in range(10):
         try:
             print(f"Clicking Load More ({i+1}/5)...")
-            load_more = wait.until(EC.element_to_be_clickable((By.ID, "load_more_nav")))
-            load_more.click()
-            time.sleep(2)  # allow content to load
+            load_more = wait.until(EC.presence_of_element_located((By.ID, "load_more_nav")))
+
+            # Scroll into view
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", load_more)
+            time.sleep(1)  # Give time for scroll animation or transition
+
+            # Perform click via JS
+            driver.execute_script("arguments[0].click();", load_more)
+            time.sleep(2)  # Wait for new funds to load
+
         except Exception as e:
             print("Could not click Load More:", e)
             break
-
     time.sleep(2)
     results = []
     fund_cards = driver.find_elements(By.CLASS_NAME, "mfFund-block")  # <-- update with actual class if different
@@ -51,7 +59,7 @@ def mutual_funds():
     for card in fund_cards:
         try:
             title_elem = card.find_element(By.CSS_SELECTOR, ".scheme-name a")
-            title = title_elem.get_attribute("title")
+            title = title_elem.get_attribute("title").lower()
             tag_elements = card.find_elements(By.CSS_SELECTOR, ".mf-category-tags a")
             tags = []
             for tag in tag_elements:
@@ -91,7 +99,7 @@ def mutual_funds():
         except Exception as e:
             pass
     
-    # Close browser
+    # # Close browser
     driver.quit()
     return results
 
