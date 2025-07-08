@@ -72,8 +72,6 @@ def mutual_funds():
                 
             aum_elem = card.find_element(By.XPATH, ".//span[text()='AUM']/following-sibling::strong/span")
             aum = aum_elem.text
-            curr_val_elem = card.find_element(By.CSS_SELECTOR, ".current-value")
-            current_value = curr_val_elem.text
             image = card.find_element(By.CSS_SELECTOR,'.item-value img')
             source = image.get_attribute('src')
             dec = False
@@ -90,7 +88,6 @@ def mutual_funds():
                 "title": title,
                 "tags": tags,
                 "aum": aum,
-                "current value": current_value,
                 "decrease from last time": dec,
                 "return": retval,
                 "expense ratio": expense_ratio

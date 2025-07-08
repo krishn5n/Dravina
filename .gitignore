@@ -4,5 +4,4 @@ gitignore
 **/venv/
 **/env/
 **/__pycache__
-chumma.py
 .env
