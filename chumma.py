@@ -1,56 +1,91 @@
-from mem0 import Memory
-from mem0.configs.base import MemoryConfig, LlmConfig, EmbedderConfig, VectorStoreConfig
-import os
+# from mem0 import Memory
+# from mem0.configs.base import MemoryConfig, LlmConfig, EmbedderConfig, VectorStoreConfig
+# import os
+# import json
+
+# gemini_api_key = os.getenv("GOOGLE_API_KEY")
+
+# llm_config_data = {
+#     'api_key': gemini_api_key,
+#     'model': 'gemini-2.5-flash'
+# }
+
+# embed_config_data = {
+#     'api_key': gemini_api_key,
+#     'model': 'models/text-embedding-004'
+# }
+
+# qdrant_specific_config_data = {
+#     "collection_name": "my_mem0_gemini_collection",
+#     "path": r"E:/qdrant_data_gemini",
+#     "on_disk": True,
+#     "embedding_model_dims": 768                    
+# }
+
+
+# configs = MemoryConfig(
+#     llm=LlmConfig(
+#         provider='gemini',
+#         config=llm_config_data
+#     ),
+#     embedder=EmbedderConfig(
+#         provider='gemini',
+#         config=embed_config_data
+#     ),
+#     vector_store=VectorStoreConfig(
+#         provider='qdrant',
+#         config=qdrant_specific_config_data # This dict will be used to initialize the Qdrant client
+#     )
+# )
+
+# client = Memory(config=configs)
+
+# result = client.add("Likes to play cricket at weekend",user_id="krishna",metadata={"category":"hobbies"})
+# print(json.dumps(result))
+
+# allmem = client.search("What kind of sports does user paly ?",user_id="krishna")
+# print(json.dumps(allmem))
+
+
+
 import json
+import requests
+from supabase import create_client, Client
+import os
+from dotenv import load_dotenv
+from Agent import scrape_data
 
-# Make sure your Google API Key is set as an environment variable
-# os.environ["GOOGLE_API_KEY"] = "YOUR_GEMINI_API_KEY"
+load_dotenv()
 
-# It's good practice to get API keys from environment variables
-gemini_api_key = os.getenv("GOOGLE_API_KEY")
+# Initialize Supabase client
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# 1. Define LLM Configuration
-llm_config_data = {
-    'api_key': gemini_api_key,
-    'model': 'gemini-2.5-flash'
-}
+#We are going to call this function at regular intervals
+def update_details(bucket_name,relative_path,full_path):
+    try:
+        response = requests.get(full_path)
+        response.raise_for_status() 
+        modified_data = scrape_data.mutual_fund_details()
+        json_mod_data = json.dumps(modified_data,indent=2)
+        # Upload the modified file back to the bucket
+        result = supabase.storage.from_(bucket_name).update(
+            relative_path,
+            json_mod_data.encode('utf-8'),
+            file_options={"content-type": "application/json", "upsert": "true",}
+        )        
+        print(type(result))
+        return "fine"
+    except Exception as e:
+        return {}
 
-# 2. Define Embedder Configuration
-embed_config_data = {
-    'api_key': gemini_api_key,
-    'model': 'models/text-embedding-004'
-}
-
-# 3. Define Vector Store Configuration (Qdrant specific)
-# This is where you specify the Qdrant parameters, including the embedding_model_dims
-qdrant_specific_config_data = {
-    "collection_name": "my_mem0_gemini_collection", # Choose a meaningful name
-    "path": r"E:/qdrant_data_gemini",                # Path for persistent storage
-    "on_disk": True,                                # Enable persistent storage
-    "embedding_model_dims": 768                    # Crucial: Match text-embedding-004's output
-}
-
-
-# Create the MemoryConfig object by instantiating the nested config classes
-configs = MemoryConfig(
-    llm=LlmConfig(
-        provider='gemini',
-        config=llm_config_data
-    ),
-    embedder=EmbedderConfig(
-        provider='gemini',
-        config=embed_config_data
-    ),
-    vector_store=VectorStoreConfig(
-        provider='qdrant',
-        config=qdrant_specific_config_data # This dict will be used to initialize the Qdrant client
-    )
-)
-
-client = Memory(config=configs)
-
-result = client.add("Likes to play football",user_id="krishna",metadata={"category":"hobbies"})
-print(json.dumps(result))
-
-allmem = client.get_all(user_id="krishna")
-print(json.dumps(allmem))
+#Use the absolute path
+def get_details(abs_path:str):
+    try:
+        response = requests.get(abs_path)
+        response.raise_for_status()
+        ans = response.json()
+        return ans
+    except Exception as e:
+        return {}
