@@ -1,4 +1,7 @@
-import scrape_data
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from scraping import scrape_data
 from typing import List
 
 # Get details about every mutual fund
@@ -71,4 +74,4 @@ def obtain_fund_type_info(category: str, fund: str):
     except Exception as e:
         print(f"Error in obtain_fund_type_info: {e}")
         return {"result": f"Error retrieving fund information: {str(e)}"}
-    
+

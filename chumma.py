@@ -53,7 +53,7 @@ import requests
 from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
-from Agent import scrape_data
+from scraping import scrape_data
 
 load_dotenv()
 
@@ -63,24 +63,31 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 #We are going to call this function at regular intervals
-def update_details(bucket_name,relative_path,full_path):
+#Use relative paths here
+def update_details():
     try:
-        response = requests.get(full_path)
-        response.raise_for_status() 
-        modified_data = scrape_data.mutual_fund_details()
-        json_mod_data = json.dumps(modified_data,indent=2)
-        # Upload the modified file back to the bucket
-        result = supabase.storage.from_(bucket_name).update(
-            relative_path,
-            json_mod_data.encode('utf-8'),
-            file_options={"content-type": "application/json", "upsert": "true",}
-        )        
-        print(type(result))
+        bucket_name = os.getenv("SUPABASE_BUCKET")
+        names = ["RELATIVE_DETAILS","RELATIVE_FUNDS"]
+        for i in names:
+            json_mod_data = {}
+            if i=="RELATIVE_DETAILS":
+                modified_data = scrape_data.mutual_fund_details()
+                json_mod_data = json.dumps(modified_data,indent=2)
+            elif i=="RELATIVE_FUNDS":
+                modified_data = scrape_data.mutual_funds()
+                json_mod_data = json.dumps(modified_data,indent=2)
+            # Upload the modified file back to the bucket
+            path = os.getenv(i)
+            result = supabase.storage.from_(bucket_name).update(
+                path,
+                json_mod_data.encode('utf-8'),
+                file_options={"content-type": "application/json", "upsert": "true",}
+            )
         return "fine"
     except Exception as e:
         return {}
 
-#Use the absolute path
+#Use the absolute path here
 def get_details(abs_path:str):
     try:
         response = requests.get(abs_path)
@@ -89,3 +96,14 @@ def get_details(abs_path:str):
         return ans
     except Exception as e:
         return {}
+
+
+def call(option:int,task:int):
+    if task == 0:
+        if option == 0:
+            return get_details(os.getenv("DETAILS_BUCKET_URL"))
+        elif option==1:
+            return get_details(os.getenv("FUNDS_BUCKET_URL"))
+        
+
+print(get_details(os.getenv("DETAILS_BUCKET_URL")))
