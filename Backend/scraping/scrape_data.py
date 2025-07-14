@@ -58,12 +58,10 @@ def mutual_funds():
                 time.sleep(2)  # Wait for new funds to load
 
             except Exception as e:
-                print("Could not click Load More:", e)
                 break
         time.sleep(2)
         results = []
         fund_cards = driver.find_elements(By.CLASS_NAME, "mfFund-block")  # <-- update with actual class if different
-        print(len(fund_cards))
         for card in fund_cards:
             try:
                 title_elem = card.find_element(By.CSS_SELECTOR, ".scheme-name a")
@@ -222,14 +220,4 @@ def mutual_fund_details():
         logger.error(f"Error in the mutual funds details: {str(e)}")
         return {}
 
-def run_scrape():
-    try:
-        mutual_funds_data = mutual_funds()
-        mutual_funds_details = mutual_fund_details()
-        precious_stone_details = gold_silver_details()
-    except Exception as e:
-        logger.error("Errors faced at the core running function")
-
-if __name__ == "__main__":
-    print(mutual_fund_details())
     
