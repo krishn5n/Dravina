@@ -20,7 +20,7 @@ async def get_details(info:str):
     try:
         value = supabase_connector.get_details(info)
         if value["status"] == 200:
-            return {"message":"Data fetched successfully"},200
+            return {"message":"Data fetched successfully","data":value["data"]},200
         else:
             return {"message":"Data not fetched"},400
     except Exception as e:

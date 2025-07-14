@@ -1,4 +1,5 @@
 
+.gitignore
 gitignore
 # Ignore all virtual environments
 **/venv/

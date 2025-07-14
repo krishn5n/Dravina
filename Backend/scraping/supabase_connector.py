@@ -53,7 +53,7 @@ def get_details(info:str):
     try:
         abs_path:str = ""
         if info == "mutual_funds":
-            abs_path = os.getenv("RELATIVE_FUNDS","")
+            abs_path = os.getenv("FUNDS_BUCKET_URL","")
         elif info == "mutual_funds_details":
             abs_path = os.getenv("FUNDS_BUCKET_URL","")
         elif info == "precious_stone_details":
