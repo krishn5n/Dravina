@@ -4,7 +4,7 @@ import supabase_connector
 app = FastAPI()
 
 #To be called by the cron job and to store values
-@app.put("/run_scapre")
+@app.get("/run_scapre")
 async def run_scapre():
     try:
         value = supabase_connector.update_details()
