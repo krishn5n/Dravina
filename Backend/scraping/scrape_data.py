@@ -4,6 +4,7 @@ from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.edge.service import Service as EdgeService
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from bs4 import BeautifulSoup
 import time
 import os
@@ -36,8 +37,7 @@ def mutual_funds():
         options.add_argument("--headless=new")  # Use --headless=new for modern headless mode
         options.add_argument("--disable-gpu")
 
-        driver_path = r"E:\msedgedriver.exe"
-        service = EdgeService(driver_path,log_path='NUL')
+        service = EdgeService(EdgeChromiumDriverManager().install())
         driver = webdriver.Edge(service=service, options=options)
 
         driver.get("https://www.etmoney.com/mutual-funds/all-funds-listing")
