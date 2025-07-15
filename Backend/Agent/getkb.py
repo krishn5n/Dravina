@@ -1,15 +1,21 @@
 import sys
 import os
+import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from scraping import scrape_data
 from typing import List
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Get details about every mutual fund
 def obtain_mutual_funds(tags: List[str]):
     try:
         setsearch = set(tags)
         retval = []
-        fund_list = scrape_data.mutual_funds()
+        path = os.getenv('PATH_TO_SCRAPER',"")
+        url = path + "/get_details/mutual_funds"
+        response = requests.get(url)
+        fund_list = response.json()['data']
         # Add validation for fund_list
         if not fund_list:
             print("No mutual funds data available")
@@ -25,7 +31,6 @@ def obtain_mutual_funds(tags: List[str]):
                 if j in setsearch:
                     retval.append(i)
                     break
-        
         return retval
     except Exception as e:
         print(f"Error in obtain_mutual_funds: {e}")
@@ -35,7 +40,10 @@ def obtain_mutual_funds(tags: List[str]):
 def obtain_stone_vals(option: str):  # Changed from int to str to match usage
     print("getting stone")
     try:
-        list_val = scrape_data.gold_silver_details()
+        path = os.getenv('PATH_TO_SCRAPER',"")
+        url = path + "/get_details/precious_stone_details"
+        response = requests.get(url)
+        list_val = response.json()['data']
         
         if not list_val:
             print("No stone data available")
@@ -54,7 +62,10 @@ def obtain_stone_vals(option: str):  # Changed from int to str to match usage
 def obtain_fund_type_info(category: str, fund: str):
     print("Getting Fund types")
     try:
-        details = scrape_data.mutual_fund_details()
+        path = os.getenv('PATH_TO_SCRAPER',"")
+        url = path + "/get_details/mutual_funds_details"
+        response = requests.get(url)
+        details = response.json()['data']
         
         if not details:
             print("No fund details available")
@@ -74,4 +85,3 @@ def obtain_fund_type_info(category: str, fund: str):
     except Exception as e:
         print(f"Error in obtain_fund_type_info: {e}")
         return {"result": f"Error retrieving fund information: {str(e)}"}
-

@@ -8,11 +8,12 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from bs4 import BeautifulSoup
 import time
 import os
+import subprocess
 import requests
 import logging
+import sys
 
-profile_path = r"D:\selenium_profile"
-os.makedirs(profile_path, exist_ok=True)
+logging.getLogger('WDM').propagate = False
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -27,26 +28,31 @@ def mutual_funds():
     try:
         options = EdgeOptions()
         options.add_argument("--start-maximized")
-        options.add_argument(f"--user-data-dir={profile_path}")
         options.add_argument("--memory-pressure-off")
         options.add_argument("--max_old_space_size=4096")
-        options.add_argument("--log-level=3")  # Suppresses INFO and WARNING
+        options.add_argument("--log-level=10")
         options.add_experimental_option('excludeSwitches', ['enable-logging'])  # Suppress DevTools log
         options.add_argument("--disable-background-networking")
         options.add_argument("--disable-background-timer-throttling")
-        options.add_argument("--headless=new")  # Use --headless=new for modern headless mode
+        options.add_argument("--headless=new")
         options.add_argument("--disable-gpu")
 
-        service = EdgeService(EdgeChromiumDriverManager().install())
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        log_file_path = os.path.join(BASE_DIR, "logs.txt")
+        if not os.path.exists(log_file_path):
+            with open(log_file_path, 'w') as f:
+                f.write('')
+
+        service = EdgeService(EdgeChromiumDriverManager().install(),log_path=log_file_path)
         driver = webdriver.Edge(service=service, options=options)
 
         driver.get("https://www.etmoney.com/mutual-funds/all-funds-listing")
         wait = WebDriverWait(driver, 10)
         total_funds = driver.find_element(By.CLASS_NAME, "total-hidden-funds-count").text.strip()
         cnt = int(total_funds)//20
+
         for i in range(10):
             try:
-                print(f"Clicking Load More ({i+1}/5)...")
                 load_more = wait.until(EC.presence_of_element_located((By.ID, "load_more_nav")))
 
                 # Scroll into view
@@ -108,7 +114,6 @@ def mutual_funds():
         driver.quit()
         return results
     except Exception as e:
-        logger.info("Issues faced in the mutual fund details collection")
         return {}
 
 #Function to return at the minimum of last 6 years of gold and silver value
@@ -120,7 +125,6 @@ def gold_silver_details():
         options.add_argument("--start-maximized")
         options.add_argument("--log-level=3")  # Suppresses INFO and WARNING
         options.add_experimental_option('excludeSwitches', ['enable-logging'])  # Suppress DevTools log
-        options.add_argument(f"--user-data-dir={profile_path}")
         options.add_argument("--memory-pressure-off")
         options.add_argument("--max_old_space_size=4096")
         options.add_argument("--disable-background-networking")
@@ -128,8 +132,17 @@ def gold_silver_details():
         options.add_argument("--headless=new")  # Use --headless=new for modern headless mode
         options.add_argument("--disable-gpu")
 
-        driver_path = r"E:\msedgedriver.exe"
-        service = EdgeService(driver_path,log_path='NUL')
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        log_file_path = os.path.join(BASE_DIR, "logs.txt")
+        if not os.path.exists(log_file_path):
+            with open(log_file_path, 'w') as f:
+                f.write('')
+
+        
+        # Redirect stdout and stderr to log file
+        sys.stderr = open(log_file_path, 'a', encoding='utf-8')
+
+        service = EdgeService(EdgeChromiumDriverManager().install(),log_path=log_file_path,log_output=subprocess.DEVNULL)
         driver = webdriver.Edge(service=service, options=options)
         driver.get("https://www.goldpriceindia.com/gold-price-history.php")
         tables = driver.find_elements(By.TAG_NAME,'tbody')
@@ -170,7 +183,7 @@ def gold_silver_details():
             raise Exception("There are no details obtained in gold/silver")
         return final
     except Exception as e:
-        logger.error(f"Error in the precious stones details: {str(e)}")
+        print(e)
         return {}
 
 #Function to return the list of information about each of the types of mutual fund
@@ -215,9 +228,7 @@ def mutual_fund_details():
                     currp = currp+ " "+ element.get_text(strip=True).lower()
         if len(retval) == 0:
             raise Exception("There are no recorded data")
+        print(retval)
         return retval
     except Exception as e:
-        logger.error(f"Error in the mutual funds details: {str(e)}")
         return {}
-
-    
