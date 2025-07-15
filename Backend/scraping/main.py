@@ -30,8 +30,3 @@ async def get_details(info:str):
 @app.get("/")
 async def root():
     return {"message":"Hello World"}
-
-@app.get("/test")
-async def test():
-    scrape_data.debug_chrome_installation()
-    return {"message":"Hello World"}

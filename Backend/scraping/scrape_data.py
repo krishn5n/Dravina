@@ -11,7 +11,6 @@ import os
 import requests
 import logging
 import sys
-import subprocess
 
 
 logging.getLogger('WDM').propagate = False
@@ -39,22 +38,15 @@ def mutual_funds():
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.binary_location = "/usr/bin/chromium-browser"
 
-        chrome_bin = os.environ.get('GOOGLE_CHROME_BIN')
-        chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
-
-        if chrome_bin and chromedriver_path:
-            options.binary_location = chrome_bin
         
-
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         log_file_path = os.path.join(BASE_DIR, "logs.txt")
         if not os.path.exists(log_file_path):
             with open(log_file_path, 'w') as f:
                 f.write('')
 
-        service = ChromeService(chromedriver_path) if chromedriver_path else ChromeService(ChromeDriverManager().install())
+        service = ChromeService(ChromeDriverManager().install(),log_path=log_file_path)
         driver = webdriver.Chrome(service=service, options=options)
 
         driver.get("https://www.etmoney.com/mutual-funds/all-funds-listing")
@@ -148,7 +140,6 @@ def gold_silver_details():
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.binary_location = "/usr/bin/chromium-browser"
 
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         log_file_path = os.path.join(BASE_DIR, "logs.txt")
@@ -159,14 +150,6 @@ def gold_silver_details():
         
         # Redirect stdout and stderr to log file
         sys.stderr = open(log_file_path, 'a', encoding='utf-8')
-
-
-
-        chrome_bin = os.environ.get('GOOGLE_CHROME_BIN')
-        chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
-
-        if chrome_bin and chromedriver_path:
-            options.binary_location = chrome_bin
         
 
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -175,7 +158,7 @@ def gold_silver_details():
             with open(log_file_path, 'w') as f:
                 f.write('')
 
-        service = ChromeService(chromedriver_path) if chromedriver_path else ChromeService(ChromeDriverManager().install())
+        service = ChromeService(ChromeDriverManager().install(),log_path=log_file_path)
 
         driver = webdriver.Chrome(service=service, options=options)
         driver.get("https://www.goldpriceindia.com/gold-price-history.php")
@@ -217,6 +200,7 @@ def gold_silver_details():
             raise Exception("There are no details obtained in gold/silver")
         return final
     except Exception as e:
+        print(e)
         return {}
 
 #Function to return the list of information about each of the types of mutual fund
@@ -263,39 +247,7 @@ def mutual_fund_details():
             raise Exception("There are no recorded data")
         return retval
     except Exception as e:
+        print(e)
         return {}
 
-
-def debug_chrome_installation():
-    print("=== Chrome Installation Debug ===")
-    
-    # Check what Chrome binaries exist
-    chrome_locations = [
-        '/usr/bin/google-chrome',
-        '/usr/bin/google-chrome-stable', 
-        '/usr/bin/chromium-browser',
-        '/usr/bin/chromium',
-        '/app/.chrome-for-testing/chrome-linux64/chrome',
-        '/app/.chrome/chrome'
-    ]
-    
-    print("Chrome binary locations:")
-    for location in chrome_locations:
-        exists = os.path.exists(location)
-        print(f"  {location}: {'✓' if exists else '✗'}")
-    
-    # Check chromedriver
-    chromedriver_locations = [
-        '/usr/bin/chromedriver',
-        '/app/.chromedriver/chromedriver'
-    ]
-    
-    print("ChromeDriver locations:")
-    for location in chromedriver_locations:
-        exists = os.path.exists(location)
-        print(f"  {location}: {'✓' if exists else '✗'}")
-    
-    # Check environment variables
-    print("Environment variables:")
-    print(f"  GOOGLE_CHROME_BIN: {os.environ.get('GOOGLE_CHROME_BIN', 'Not set')}")
-    print(f"  CHROMEDRIVER_PATH: {os.environ.get('CHROMEDRIVER_PATH', 'Not set')}")
+print(gold_silver_details())
