@@ -3,12 +3,16 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 import time
 import os
 import requests
 import logging
 import sys
+import subprocess
+
 
 logging.getLogger('WDM').propagate = False
 logging.basicConfig(
@@ -79,11 +83,13 @@ def mutual_funds():
         for card in fund_cards:
             try:
                 title_elem = card.find_element(By.CSS_SELECTOR, ".scheme-name a")
-                title = title_elem.get_attribute("title").lower()
+                title = title_elem.get_attribute("title")
+                title = title.lower() if title else ""
                 tag_elements = card.find_elements(By.CSS_SELECTOR, ".mf-category-tags a")
                 tags = []
                 for tag in tag_elements:
-                    val = tag.get_attribute("title").lower()
+                    val = tag.get_attribute("title")
+                    val = val.lower() if val else ""
                     if "thematic" in val:
                         val = "thematic"
                     elif "sectoral" in val:
@@ -95,7 +101,7 @@ def mutual_funds():
                 image = card.find_element(By.CSS_SELECTOR,'.item-value img')
                 source = image.get_attribute('src')
                 dec = False
-                if 'red' in source:
+                if source and 'red' in source:
                     dec = True
                 returns = card.find_element(By.CSS_SELECTOR, ".sip-returns .item-value.active")
                 retval = returns.text.strip()
@@ -259,4 +265,37 @@ def mutual_fund_details():
     except Exception as e:
         return {}
 
-print(mutual_funds())
+
+def debug_chrome_installation():
+    print("=== Chrome Installation Debug ===")
+    
+    # Check what Chrome binaries exist
+    chrome_locations = [
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable', 
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/app/.chrome-for-testing/chrome-linux64/chrome',
+        '/app/.chrome/chrome'
+    ]
+    
+    print("Chrome binary locations:")
+    for location in chrome_locations:
+        exists = os.path.exists(location)
+        print(f"  {location}: {'✓' if exists else '✗'}")
+    
+    # Check chromedriver
+    chromedriver_locations = [
+        '/usr/bin/chromedriver',
+        '/app/.chromedriver/chromedriver'
+    ]
+    
+    print("ChromeDriver locations:")
+    for location in chromedriver_locations:
+        exists = os.path.exists(location)
+        print(f"  {location}: {'✓' if exists else '✗'}")
+    
+    # Check environment variables
+    print("Environment variables:")
+    print(f"  GOOGLE_CHROME_BIN: {os.environ.get('GOOGLE_CHROME_BIN', 'Not set')}")
+    print(f"  CHROMEDRIVER_PATH: {os.environ.get('CHROMEDRIVER_PATH', 'Not set')}")

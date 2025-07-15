@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 import supabase_connector
+import scrape_data
 
 app = FastAPI()
 
@@ -28,4 +29,9 @@ async def get_details(info:str):
 
 @app.get("/")
 async def root():
+    return {"message":"Hello World"}
+
+@app.get("/test")
+async def test():
+    scrape_data.debug_chrome_installation()
     return {"message":"Hello World"}
