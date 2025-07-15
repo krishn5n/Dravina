@@ -37,17 +37,20 @@ def mutual_funds():
         options.add_argument("--disable-dev-shm-usage")
         options.binary_location = "/usr/bin/chromium-browser"
 
+        chrome_bin = os.environ.get('GOOGLE_CHROME_BIN')
+        chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
+
+        if chrome_bin and chromedriver_path:
+            options.binary_location = chrome_bin
+        
+
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         log_file_path = os.path.join(BASE_DIR, "logs.txt")
         if not os.path.exists(log_file_path):
             with open(log_file_path, 'w') as f:
                 f.write('')
 
-        service = ChromeService(
-            executable_path=ChromeDriverManager().install(),
-            log_output=None  # Set to `subprocess.DEVNULL` to fully suppress logs if needed
-        )
-
+        service = ChromeService(chromedriver_path) if chromedriver_path else ChromeService(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
 
         driver.get("https://www.etmoney.com/mutual-funds/all-funds-listing")
@@ -151,10 +154,22 @@ def gold_silver_details():
         # Redirect stdout and stderr to log file
         sys.stderr = open(log_file_path, 'a', encoding='utf-8')
 
-        service = ChromeService(
-            executable_path=ChromeDriverManager().install(),
-            log_output=None  # Set to `subprocess.DEVNULL` to fully suppress logs if needed
-        )
+
+
+        chrome_bin = os.environ.get('GOOGLE_CHROME_BIN')
+        chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
+
+        if chrome_bin and chromedriver_path:
+            options.binary_location = chrome_bin
+        
+
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        log_file_path = os.path.join(BASE_DIR, "logs.txt")
+        if not os.path.exists(log_file_path):
+            with open(log_file_path, 'w') as f:
+                f.write('')
+
+        service = ChromeService(chromedriver_path) if chromedriver_path else ChromeService(ChromeDriverManager().install())
 
         driver = webdriver.Chrome(service=service, options=options)
         driver.get("https://www.goldpriceindia.com/gold-price-history.php")
