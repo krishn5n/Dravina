@@ -1,14 +1,11 @@
 from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.edge.options import Options as EdgeOptions
-from selenium.webdriver.edge.service import Service as EdgeService
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.service import Service as ChromeService
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from bs4 import BeautifulSoup
 import time
 import os
-import subprocess
 import requests
 import logging
 import sys
@@ -26,16 +23,19 @@ logger = logging.getLogger(__name__)
 #Ouput -> List of dictionary of values of each mutual funds
 def mutual_funds():
     try:
-        options = EdgeOptions()
+        options = ChromeOptions()
         options.add_argument("--start-maximized")
         options.add_argument("--memory-pressure-off")
         options.add_argument("--max_old_space_size=4096")
-        options.add_argument("--log-level=10")
-        options.add_experimental_option('excludeSwitches', ['enable-logging'])  # Suppress DevTools log
+        options.add_argument("--log-level=3")  # Suppresses most browser logs
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])  # Suppress DevTools logging
         options.add_argument("--disable-background-networking")
         options.add_argument("--disable-background-timer-throttling")
-        options.add_argument("--headless=new")
+        options.add_argument("--headless=new")  # Use new headless mode (Chrome 109+)
         options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.binary_location = "/usr/bin/chromium-browser"
 
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         log_file_path = os.path.join(BASE_DIR, "logs.txt")
@@ -43,8 +43,12 @@ def mutual_funds():
             with open(log_file_path, 'w') as f:
                 f.write('')
 
-        service = EdgeService(EdgeChromiumDriverManager().install(),log_path=log_file_path)
-        driver = webdriver.Edge(service=service, options=options)
+        service = ChromeService(
+            executable_path=ChromeDriverManager().install(),
+            log_output=None  # Set to `subprocess.DEVNULL` to fully suppress logs if needed
+        )
+
+        driver = webdriver.Chrome(service=service, options=options)
 
         driver.get("https://www.etmoney.com/mutual-funds/all-funds-listing")
         wait = WebDriverWait(driver, 10)
@@ -64,6 +68,7 @@ def mutual_funds():
                 time.sleep(2)  # Wait for new funds to load
 
             except Exception as e:
+                print(e)
                 break
         time.sleep(2)
         results = []
@@ -114,6 +119,7 @@ def mutual_funds():
         driver.quit()
         return results
     except Exception as e:
+        print(f"outside {e}")
         return {}
 
 #Function to return at the minimum of last 6 years of gold and silver value
@@ -121,16 +127,19 @@ def mutual_funds():
 #Output -> Dictionary of values -> gold and silver -> Each having dictionaries of date and costs
 def gold_silver_details():
     try:
-        options = EdgeOptions()
+        options = ChromeOptions()
         options.add_argument("--start-maximized")
-        options.add_argument("--log-level=3")  # Suppresses INFO and WARNING
-        options.add_experimental_option('excludeSwitches', ['enable-logging'])  # Suppress DevTools log
         options.add_argument("--memory-pressure-off")
         options.add_argument("--max_old_space_size=4096")
+        options.add_argument("--log-level=3")  # Suppresses most browser logs
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])  # Suppress DevTools logging
         options.add_argument("--disable-background-networking")
         options.add_argument("--disable-background-timer-throttling")
-        options.add_argument("--headless=new")  # Use --headless=new for modern headless mode
+        options.add_argument("--headless=new")  # Use new headless mode (Chrome 109+)
         options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.binary_location = "/usr/bin/chromium-browser"
 
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         log_file_path = os.path.join(BASE_DIR, "logs.txt")
@@ -142,8 +151,12 @@ def gold_silver_details():
         # Redirect stdout and stderr to log file
         sys.stderr = open(log_file_path, 'a', encoding='utf-8')
 
-        service = EdgeService(EdgeChromiumDriverManager().install(),log_path=log_file_path,log_output=subprocess.DEVNULL)
-        driver = webdriver.Edge(service=service, options=options)
+        service = ChromeService(
+            executable_path=ChromeDriverManager().install(),
+            log_output=None  # Set to `subprocess.DEVNULL` to fully suppress logs if needed
+        )
+
+        driver = webdriver.Chrome(service=service, options=options)
         driver.get("https://www.goldpriceindia.com/gold-price-history.php")
         tables = driver.find_elements(By.TAG_NAME,'tbody')
         
@@ -183,7 +196,6 @@ def gold_silver_details():
             raise Exception("There are no details obtained in gold/silver")
         return final
     except Exception as e:
-        print(e)
         return {}
 
 #Function to return the list of information about each of the types of mutual fund
@@ -228,7 +240,8 @@ def mutual_fund_details():
                     currp = currp+ " "+ element.get_text(strip=True).lower()
         if len(retval) == 0:
             raise Exception("There are no recorded data")
-        print(retval)
         return retval
     except Exception as e:
         return {}
+
+print(mutual_funds())
