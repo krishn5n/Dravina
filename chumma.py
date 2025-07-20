@@ -18,7 +18,6 @@ embed_config_data = {
 qdrant_specific_config_data = {
     "collection_name": "my_mem0_gemini_collection",
     "path": r"E:/qdrant_data_gemini",
-    "on_disk": True,
     "embedding_model_dims": 768                    
 }
 
@@ -43,5 +42,5 @@ client = Memory(config=configs)
 result = client.add("Likes to play cricket at weekend",user_id="krishna",metadata={"category":"hobbies"})
 print(json.dumps(result))
 
-allmem = client.search("What kind of sports does user paly ?",user_id="krishna")
+allmem = client.get_all(user_id="krishna")
 print(json.dumps(allmem))

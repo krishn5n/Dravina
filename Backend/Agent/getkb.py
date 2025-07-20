@@ -15,7 +15,7 @@ def obtain_mutual_funds(tags: List[str]):
         path = os.getenv('PATH_TO_SCRAPER',"")
         url = path + "/get_details/mutual_funds"
         response = requests.get(url)
-        fund_list = response.json()['data']
+        fund_list = response.json()[0]['data']
         # Add validation for fund_list
         if not fund_list:
             print("No mutual funds data available")
@@ -85,3 +85,4 @@ def obtain_fund_type_info(category: str, fund: str):
     except Exception as e:
         print(f"Error in obtain_fund_type_info: {e}")
         return {"result": f"Error retrieving fund information: {str(e)}"}
+

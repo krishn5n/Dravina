@@ -27,13 +27,16 @@ def update_details():
             json_mod_data = {}
             if i=="RELATIVE_DETAILS":
                 modified_data = scrape_data.mutual_fund_details()
-                json_mod_data = json.dumps(modified_data,indent=2)
+                if len(modified_data) != 0:
+                    json_mod_data = json.dumps(modified_data,indent=2)
             elif i=="RELATIVE_FUNDS":
                 modified_data = scrape_data.mutual_funds()
-                json_mod_data = json.dumps(modified_data,indent=2)
+                if len(modified_data) != 0:
+                    json_mod_data = json.dumps(modified_data,indent=2)
             elif i=="RELATIVE_STONES":
                 modified_data = scrape_data.gold_silver_details()
-                json_mod_data = json.dumps(modified_data,indent=2)
+                if len(modified_data) != 0:
+                    json_mod_data = json.dumps(modified_data,indent=2)
             path = os.getenv(i,"")
             result = supabase.storage.from_(bucket_name).update(
                 path,

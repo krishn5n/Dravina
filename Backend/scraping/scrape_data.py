@@ -249,5 +249,3 @@ def mutual_fund_details():
     except Exception as e:
         print(e)
         return {}
-
-print(gold_silver_details())

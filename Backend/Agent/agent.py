@@ -1,5 +1,4 @@
 import json
-import requests
 import os
 from google import genai
 from google.genai import types
@@ -7,8 +6,17 @@ import getkb
 from pydantic import BaseModel
 from typing import List
 from dotenv import load_dotenv
+from mem0 import Memory
+from mem0.configs.base import MemoryConfig, LlmConfig, EmbedderConfig, VectorStoreConfig
+from qdrant_client import QdrantClient
+import logging
+from typing import Dict,List
+
+from google.genai.types import FunctionCall,FunctionResponse
 
 load_dotenv()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Fixed function declaration - corrected ARRAY type
 get_mutual_funds_set_declaration = {
@@ -43,7 +51,7 @@ def get_mutual_funds_set(tags: List[str]) -> List[dict[str, str]]:
         mutual_list = getkb.obtain_mutual_funds(tags)
         return mutual_list
     except Exception as e:
-        print(f"Error getting mutual funds: {e}")
+        logger.error(f"Error getting mutual funds: {e}")
         return []
 
 # Fixed function declaration - corrected STRING type and enum values
@@ -82,7 +90,7 @@ def get_info_about_fund(based_category: str, fund: str):
         fund_info = getkb.obtain_fund_type_info(based_category, fund)
         return fund_info
     except Exception as e:
-        print(f"Error getting fund info: {e}")
+        logger.error(f"Error getting fund info: {e}")
         return {"result": "Error retrieving fund information"}
 
 # Fixed function declaration - corrected STRING type
@@ -145,7 +153,7 @@ def details_to_types(risk: str, time: str):
         else:
             return risk_data.get(risk, {}).get(time, [])
     except Exception as e:
-        print(f"Error in details_to_types: {e}")
+        logger.error(f"Error in details_to_types: {e}")
         return []
     
 class Userbehav(BaseModel):
@@ -194,6 +202,39 @@ def analyze_user_profile(query):
     retval:Userbehav = response.parsed
     return retval
 
+class AdviceGiven(BaseModel):
+    finance_advice: List[Dict[str,str]]
+
+def key_finance_advice(advice):
+    system_prompt = f'''
+    You are a professional financial advisor who analyzes financial advice to return the details of the advice.
+
+    #Example of finance advice
+    Advice: 
+
+    '''
+    client = genai.Client()
+    config = types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(
+            thinking_budget=-1  # Dynamic thinking
+        ),
+        response_mime_type="application/json",
+        response_schema=Userbehav
+    )
+    
+    contents = [
+        types.Content(
+            role="user", parts=[types.Part(text=f"{system_prompt}")]
+        ),
+        types.Content(
+            role="user", parts=[types.Part(text=f"{query}")]
+        )
+    ]
+    response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=contents,
+    config=config
+    )
 
 def call_tool(name, args):
     """Enhanced tool calling with error handling"""
@@ -207,13 +248,99 @@ def call_tool(name, args):
         else:
             return {"error": f"Unknown tool: {name}"}
     except Exception as e:
-        print(f"Error calling tool {name}: {e}")
+        logger.error(f"Error calling tool {name}: {e}")
         return {"error": f"Error executing {name}: {str(e)}"}
 
-def get_finance_advice(query):
-    # Analyze user profile for better context
+'''
+Memory -> 
+    Get memory
+    Add Memory
+'''
+
+def memory(task,userid,messages=None):
+    try:
+        gemini_api_key = os.getenv("GOOGLE_API_KEY")
+        llm_config_data = {
+            'api_key': gemini_api_key,
+            'model': 'gemini-2.5-flash'
+        }
+
+        embed_config_data = {
+            'api_key': gemini_api_key,
+            'model': 'models/text-embedding-004'
+        }
+
+        qdrant_specific_config_data = {
+            "collection_name": "Dravina",
+            "url": os.getenv('QDRANT_URL'),
+            "api_key": os.getenv('QDRANT_API_KEY'),
+            "on_disk": True,
+            "embedding_model_dims":768,
+        }
+
+        configs = MemoryConfig(
+            llm=LlmConfig(
+                provider='gemini',
+                config=llm_config_data
+            ),
+            embedder=EmbedderConfig(
+                provider='gemini',
+                config=embed_config_data
+            ),
+            vector_store=VectorStoreConfig(
+                provider='qdrant',
+                config=qdrant_specific_config_data
+            )
+        )
+        client = Memory(config=configs)
+
+        if task == "get_memory":
+            return client.get_all(user_id = str(userid), limit = 20)
+        elif task == "add_memory":
+            tosend,tonotsend = part_to_memory(messages)
+            client.add(messages=tosend, user_id=str(userid))
+            # client.add(messages=tonotsend, user_id=str(userid),infer=False)
+        elif task == "add_memory_option":
+            client.add(messages=messages, user_id=str(userid),infer=False)
+        return {}
+    except Exception as e:
+        logger.error(f"Error in memory: {e}")
+        return {}
+
+def part_to_memory(messages):
+    tosend = [[],[]]
+    for content in messages:
+        parts = content.parts
+        if content.role == "model":
+            part = content.parts[0]
+            if part and part.text:
+                continue
+        if parts:
+            for part in parts:
+                if part.text:
+                    vals = {}
+                    vals['content'] = part.text
+                    vals['role'] = content.role
+                    if part.text.startswith("Result -"):
+                        
+                        tosend[1].append(vals)
+                    else:
+                        tosend[0].append(vals)
+                elif part.function_call:
+                    vals = {}
+                    vals['content'] = part.function_call
+                    vals['role'] = content.role
+                    tosend.append(vals)
+                elif part.function_response:
+                    vals = {}
+                    vals['content'] = part.function_response
+                    vals['role'] = content.role
+                    tosend.append(vals)
+    return tosend
+
+
+def get_finance_advice(query,userid):
     user_profile = analyze_user_profile(query)
-    print(f"User Profile Analysis: {user_profile}")
     
     system_prompt = f'''
     You are a professional financial advisor who provides personalized investment insights using reasoning and available tools.
@@ -223,6 +350,7 @@ def get_finance_advice(query):
     - Risk Tolerance: {user_profile.risk_tolerance}
     - Time Horizon: {user_profile.time_horizon}
     
+
     # MANDATORY TOOL USAGE WORKFLOW
     You MUST follow this exact sequence:
     
@@ -315,14 +443,22 @@ def get_finance_advice(query):
             )
         )
         
+        memory_list = memory("get_memory",userid)
+        logger.info(f"Memory list: {memory_list}")
         contents = [
             types.Content(
-                role="user", parts=[types.Part(text=f"{system_prompt}")]
+                role="model", parts=[types.Part(text=f"{system_prompt}")]
             ),
             types.Content(
                 role="user", parts=[types.Part(text=f"{query}")]
             )
         ]
+        if memory_list:
+            results = memory_list.get("results")
+            for i in results:
+                contents.append(types.Content(
+                    role="user", parts=[types.Part(text=i['memory'])]
+                ))
 
         loop = 1
         max_loops = 10
@@ -335,59 +471,64 @@ def get_finance_advice(query):
                     config=config
                 )
 
+                logger.info(f"Response: {response}")
                 candidate = response.candidates[0]
                 parts = candidate.content.parts
+                logger.info(f"Parts: {parts}")
 
                 # Check if we have a final result
                 for part in parts:
                     if part.text and part.text.startswith("Result -"):
-                        print("Final result received")
+                        contents.append(types.Content(
+                            role="user",
+                            parts=[types.Part(text=part.text)]
+                        ))
+                        memory("add_memory",userid,contents)
                         return part.text
                     
                     if part.function_call:
                         name = part.function_call.name
                         args = dict(part.function_call.args)  # Convert to dict
-                        
-                        print(f"Calling tool: {name} with args: {args}")
+                        logger.info(f"Calling tool: {name} with args: {args}")
                         result = call_tool(name, args)
-                        print(f"Tool result: {result}")
-                        
-                        # If details_to_types was called, suggest calling get_mutual_funds_set next
-                        if name == "details_to_types":
-                            print("Hint: Next step should be calling get_mutual_funds_set with fund types as tags")
-                        
-                        function_response_text = json.dumps({
-                            "tool_used": name,
-                            "response": result
-                        })
-                        
+                        logger.info(f"Tool result obtained",len(result))
                         contents.append(types.Content(
                             role="user",
-                            parts=[types.Part(text=function_response_text)]
+                            parts=[types.Part(function_call=FunctionCall(name=name,args=args,id=part.function_call.id))]
+                        ))
+                        dict_response = {
+                            "output": result
+                        }
+                        contents.append(types.Content(
+                            role="user",
+                            parts=[types.Part(function_response=FunctionResponse(response=dict_response,will_continue=False,name=name,id=part.function_call.id))]
                         ))
                     else:
+                        contents.append(types.Content(role="model", parts=[part]))
+                        print(contents[-1])
                         if part.text:
                             print(f"Model response: {part.text[:200]}...")
-                        contents.append(types.Content(role="model", parts=[part]))
                 
                 loop += 1
                 
             except Exception as e:
-                print(f"Error in generation loop {loop}: {e}")
+                logger.error(f"Error in generation loop {loop}: {e}")
                 return f"Error: {str(e)}"
         
         return "Maximum iterations reached without final result"
         
     except Exception as e:
-        print(f"Error in get_finance_advice: {e}")
+        logger.error(f"Error in get_finance_advice: {e}")
         return f"Error initializing finance advisor: {str(e)}"
 
-# Test the function
+
 if __name__ == "__main__":
     try:
         result = get_finance_advice(
-            "I earn close to 40000 and i spend 10000 on fixed expenses, 1000 on variable and 15000 on casual expenses. I am of age 33 and i want to save money such that by to live happily and have savings by 50. I dont know if i am ready to take risk"
+            "I earn close to 40000 and i spend 10000 on fixed expenses, 1000 on variable and 15000 on casual expenses. I am of age 33 and i want to save money such that by to live happily and have savings by 50. I dont know if i am ready to take risk",100
         )
-        print(result)
+        # memlist = memory("get_memory",100)
+        # vals = json.dumps(memlist,indent=4)
+        print(result)        
     except Exception as e:
-        print(f"Error running finance advisor: {e}")
+        logger.error(f"Error running finance advisor: {e}")
