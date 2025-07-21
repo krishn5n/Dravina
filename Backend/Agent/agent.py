@@ -8,14 +8,13 @@ from typing import List
 from dotenv import load_dotenv
 from mem0 import Memory
 from mem0.configs.base import MemoryConfig, LlmConfig, EmbedderConfig, VectorStoreConfig
-from qdrant_client import QdrantClient
 import logging
-from typing import Dict,List
+import datetime
 
 from google.genai.types import FunctionCall,FunctionResponse
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 # Fixed function declaration - corrected ARRAY type
@@ -202,16 +201,51 @@ def analyze_user_profile(query):
     retval:Userbehav = response.parsed
     return retval
 
-class AdviceGiven(BaseModel):
-    finance_advice: List[Dict[str,str]]
-
 def key_finance_advice(advice):
-    system_prompt = f'''
-    You are a professional financial advisor who analyzes financial advice to return the details of the advice.
+    system_prompt = '''
+    You are an intelligent financial advisor agent designed to extract structured insights from qualitative financial recommendations. Your goal is to identify and summarize:
 
-    #Example of finance advice
-    Advice: 
+    - Portfolio allocation strategy
+    - Fund names and types
+    - Investment amounts
+    - Reasoning behind fund selection
 
+    ### Input Example: Financial Advice
+
+    **Portfolio Allocation Strategy:**
+    Given your age and long-term goal, an equity allocation around 60–70% is generally recommended. For your conservative risk appetite, we will focus on well-performing Large Cap Equity Funds.
+
+    **Selected Funds and Allocation:**
+    You have a monthly savings capacity of ₹14,000. Here's how we can allocate it:
+
+    1. **Nippon India Large Cap Fund**
+    - **Monthly Investment:** ₹8,400 (60% of your monthly savings)
+    - **Reasoning:** This fund has demonstrated the highest returns (+21.79% p.a.) among available Large Cap options, coupled with a competitive expense ratio (0.65%). It’s suitable for long-term wealth creation with a conservative mindset.
+
+    2. **ICICI Prudential Large Cap Fund**
+    - **Monthly Investment:** ₹5,600 (40% of your monthly savings)
+    - **Reasoning:** Slightly lower returns (+19.44% p.a.) than Nippon India, but boasts a higher AUM of ₹72,336 Cr, indicating investor confidence and stability. Helps diversify within the Large Cap segment.
+
+    ### Output Format
+    Return the result as a structured JSON object:
+
+    [
+    {
+        "Nippon India Large Cap Fund": {
+        "Monthly Investment": "₹8,400",
+        "Reasoning": "This fund has demonstrated the highest returns (+21.79% p.a.) among available Large Cap options, coupled with a competitive expense ratio (0.65%). It’s suitable for long-term wealth creation with a conservative mindset."
+        },
+        "ICICI Prudential Large Cap Fund": {
+        "Monthly Investment": "₹5,600",
+        "Reasoning": "Slightly lower returns (+19.44% p.a.) than Nippon India, but boasts a higher AUM of ₹72,336 Cr, indicating investor confidence and stability. Helps diversify within the Large Cap segment."
+        }
+    }
+    ]
+    
+    ### Guidelines
+    - You must return the finance advice in the same format as the example.
+    - You must summarise the Reasoning in 1-2 lines.
+    - You must return the finance advice in the same language as the input.
     '''
     client = genai.Client()
     config = types.GenerateContentConfig(
@@ -219,22 +253,29 @@ def key_finance_advice(advice):
             thinking_budget=-1  # Dynamic thinking
         ),
         response_mime_type="application/json",
-        response_schema=Userbehav
     )
+    
     
     contents = [
         types.Content(
             role="user", parts=[types.Part(text=f"{system_prompt}")]
         ),
         types.Content(
-            role="user", parts=[types.Part(text=f"{query}")]
+            role="user", parts=[types.Part(text=f"{advice}")]
         )
     ]
+    
     response = client.models.generate_content(
     model="gemini-2.5-flash",
     contents=contents,
     config=config
     )
+
+    candidate = response.candidates[0]
+    if candidate and candidate.content and candidate.content.parts:
+        parts = candidate.content.parts[0]
+        if parts.text:
+            return parts.text
 
 def call_tool(name, args):
     """Enhanced tool calling with error handling"""
@@ -251,11 +292,12 @@ def call_tool(name, args):
         logger.error(f"Error calling tool {name}: {e}")
         return {"error": f"Error executing {name}: {str(e)}"}
 
-'''
-Memory -> 
-    Get memory
-    Add Memory
-'''
+def datesort(memory):
+    created = datetime.fromisoformat(memory.created_at)
+    if memory.updated_at:
+        updated = datetime.fromisoformat(memory.updated_at)
+        created = max(created,updated)
+    return created
 
 def memory(task,userid,messages=None):
     try:
@@ -295,13 +337,19 @@ def memory(task,userid,messages=None):
         client = Memory(config=configs)
 
         if task == "get_memory":
-            return client.get_all(user_id = str(userid), limit = 20)
+            return client.get_all(user_id=str(userid),limit=10)
         elif task == "add_memory":
-            tosend,tonotsend = part_to_memory(messages)
-            client.add(messages=tosend, user_id=str(userid))
-            # client.add(messages=tonotsend, user_id=str(userid),infer=False)
-        elif task == "add_memory_option":
-            client.add(messages=messages, user_id=str(userid),infer=False)
+            tosend = part_to_memory(messages)
+            client.add(messages=tosend[0], user_id=str(userid))
+            client.add(messages=tosend[1], user_id=str(userid),infer=False,metadata={"type":"finance_advice"})
+        elif task == "get_last_advice":
+            res = client.search(filters={"type":"finance_advice"},user_id=str(userid),limit=100)
+            res = res.get("results",[])
+            if len(res) > 0:
+                maxmem = max(res,key=datesort)
+                return maxmem.memory
+            else:
+                return ""
         return {}
     except Exception as e:
         logger.error(f"Error in memory: {e}")
@@ -322,21 +370,70 @@ def part_to_memory(messages):
                     vals['content'] = part.text
                     vals['role'] = content.role
                     if part.text.startswith("Result -"):
-                        
+                        result = key_finance_advice(part.text)
+                        vals['content'] = result
                         tosend[1].append(vals)
                     else:
                         tosend[0].append(vals)
-                elif part.function_call:
-                    vals = {}
-                    vals['content'] = part.function_call
-                    vals['role'] = content.role
-                    tosend.append(vals)
-                elif part.function_response:
-                    vals = {}
-                    vals['content'] = part.function_response
-                    vals['role'] = content.role
-                    tosend.append(vals)
     return tosend
+
+def compare_advice(advice,prevadvice):
+    system_prompt = '''
+    You are a financial recommendation comparison assistant. Your task is to compare two pieces of financial advice and highlight the key differences.
+
+    ### Guidelines
+    - NEVER change the advice given , just compare new advice with previous advice and highlight the key differences.
+    - ALWAYS append the differences at the end of the given advice
+    - ALWAYS advice is provided with the format:
+        Result -
+    - **ALWAYS, When a new piece of financial advice (e.g., fund allocation) is generated and a previous one exists, do the following:**
+        - Compare the new advice with the previous one.
+        - Highlight key differences in:
+            - Fund names
+            - Fund categories (e.g., Large Cap vs Mid Cap)
+            - Allocation percentages
+            - Risk profiles or durations (if changed)
+            - Absolute monetary difference (based on a known monthly savings amount)
+            - Explain in simple language why the recommendation changed
+            - Risk profiles or durations (if changed)
+            - Absolute monetary difference (based on a known monthly savings amount)
+            - Explain in simple language why the recommendation changed
+    '''
+    try:
+        client = genai.Client()
+        config = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(
+                thinking_budget=-1  # Dynamic thinking
+            ),
+            response_mime_type="application/json",
+        )
+        
+        contents = [
+            types.Content(
+                role="user", parts=[types.Part(text=f"{system_prompt}")]
+            ),
+            types.Content(
+                role="user", parts=[types.Part(text=f"{advice}")]
+            ),
+            types.Content(
+                role="user", parts=[types.Part(text=f"{prevadvice}")]
+            )
+        ]
+        
+        response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=contents,
+        config=config
+        )
+        candidate = response.candidates[0]
+        if candidate and candidate.content and candidate.content.parts:
+            parts = candidate.content.parts[0]
+            if parts.text:
+                return parts.text
+            return ""
+    except Exception as e:
+        logger.error(f"Error in compare_advice: {e}")
+        return ""
 
 
 def get_finance_advice(query,userid):
@@ -396,6 +493,30 @@ def get_finance_advice(query,userid):
     - **Consider emotional indicators in user's language**
     - **Start final results with "Result - " in markdown format**
 
+            Example:
+                Previous Advice:
+                - Nippon India Large Cap Fund: 60% of monthly savings
+                - ICICI Prudential Large Cap Fund: 40% of monthly savings
+
+                New Advice:
+                - Nippon India Mid Cap Fund: 70% of monthly savings
+                - ICICI Prudential Mid Cap Fund: 30% of monthly savings
+                Monthly Savings: ₹10,000
+                
+                Output should contain this along with the new advice:
+                1. Fund Category Changed:
+                - Large Cap ➝ Mid Cap
+                - Indicates a shift from low-risk, stable growth to higher-risk, higher-return potential.
+
+                2. Allocation Adjusted:
+                - Nippon India: 60% ➝ 70% (+₹1,000)
+                - ICICI Prudential: 40% ➝ 30% (−₹1,000)
+
+                3. Explanation:
+                - The shift to Mid Cap funds suggests the user is now comfortable with higher risk in pursuit of better returns, even for the same investment horizon. Mid Cap funds offer higher growth potential but come with increased volatility.
+
+
+
     # USER ANALYSIS FRAMEWORK
     When analyzing users, consider:
     - **Risk Tolerance Indicators**: 
@@ -443,8 +564,9 @@ def get_finance_advice(query,userid):
             )
         )
         
-        memory_list = memory("get_memory",userid)
+        advice_list,memory_list = memory("get_memory",userid)
         logger.info(f"Memory list: {memory_list}")
+        logger.info(f"Advice list: {advice_list}")
         contents = [
             types.Content(
                 role="model", parts=[types.Part(text=f"{system_prompt}")]
@@ -458,6 +580,11 @@ def get_finance_advice(query,userid):
             for i in results:
                 contents.append(types.Content(
                     role="user", parts=[types.Part(text=i['memory'])]
+                ))
+        if advice_list:
+            for i in advice_list:
+                contents.append(types.Content(
+                    role="user", parts=[types.Part(text=f"Previous Advice Given: {i['memory']}")]
                 ))
 
         loop = 1
@@ -479,12 +606,16 @@ def get_finance_advice(query,userid):
                 # Check if we have a final result
                 for part in parts:
                     if part.text and part.text.startswith("Result -"):
+                        finalans = part.text
+                        prev_advice = memory("get_last_advice",userid)
+                        if len(prev_advice) > 0:
+                            finalans = compare_advice(part.text,prev_advice)
                         contents.append(types.Content(
                             role="user",
-                            parts=[types.Part(text=part.text)]
+                            parts=[types.Part(text=finalans)]
                         ))
                         memory("add_memory",userid,contents)
-                        return part.text
+                        return finalans
                     
                     if part.function_call:
                         name = part.function_call.name
@@ -521,14 +652,10 @@ def get_finance_advice(query,userid):
         logger.error(f"Error in get_finance_advice: {e}")
         return f"Error initializing finance advisor: {str(e)}"
 
-
 if __name__ == "__main__":
     try:
         result = get_finance_advice(
-            "I earn close to 40000 and i spend 10000 on fixed expenses, 1000 on variable and 15000 on casual expenses. I am of age 33 and i want to save money such that by to live happily and have savings by 50. I dont know if i am ready to take risk",100
+            "I earn close to 100000 and i spend 10000 on fixed expenses, 10000 on variable and 15000 on casual expenses. I am of age 27 and i want to save money such that by 35 I should have at least 50 lakhs",101
         )
-        # memlist = memory("get_memory",100)
-        # vals = json.dumps(memlist,indent=4)
-        print(result)        
     except Exception as e:
         logger.error(f"Error running finance advisor: {e}")
