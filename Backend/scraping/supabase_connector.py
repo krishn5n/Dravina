@@ -64,12 +64,14 @@ def get_details(info:str):
         else:
             return {"status":400}
 
+        print(abs_path)
         response = requests.get(abs_path)
+        print(response.status_code)
         response.raise_for_status()
         if response.status_code != 200:
             return {"status":400}
         ans = response.json()
         return {"status":200,"data":ans}
     except Exception as e:
-        logger.error(f"Error updating details: {e}")
+        logger.error(f"Error getting details: {e}")
         return {"status":400}

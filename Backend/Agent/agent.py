@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from mem0 import Memory
 from mem0.configs.base import MemoryConfig, LlmConfig, EmbedderConfig, VectorStoreConfig
 import logging
-import datetime
+from dateutil.parser import parse
 
 from google.genai.types import FunctionCall,FunctionResponse
 
@@ -164,11 +164,33 @@ def analyze_user_profile(query):
     You are a professional psychologist who analyzes human emotions to provide insights on an individuals risk mindset and also analyse the duration of funds.
 
     #Guidelines
-    - Risk can be either 'conservative', 'moderate' or 'aggressive' or if none match 'ready for anything'
+    - ALWAYS have risk as'conservative', 'moderate' or 'aggressive' or if none match 'ready for anything'
+    - ALWAYS calculate the expected returns if the user specifies the amount of money they want to save and the amount of money they have
+      - 20% of salary usually is placed in mutual funds , If more is placed - moderate
+      - ALWAYS Calculate returns expected using  X = P* ((1+r)^n) * (1+r) where X is amount expected, P is monthly invested, n is the duration in months , Calculate approximately for r
+        - If r <= 15 then risk is conservative
+        - If r >= 15 and r<=22 then risk is moderate
+        - If r >= 22 then risk is aggressive
+      - Example:
+        X = 4000000
+        P = 30000
+        n = 10
+        Solving equation of we get  X = P* (((1+r)^n+1) , (1+r)^61 = 40,00,000/30,000
+            - Put r = 15 then we get 1.15^61 = 5041, which is greater than 40,00,000/30,000 hence user is conservative
+    - Exammple
+        X = 4000000
+        P = 6000
+        n = 5
+        Solving equation of we get  X = P* (((1+r)^n+1) , (1+r)^60 *(1+r) = 4000000/6000
+            - Put r = 15 then we get 1.15^31 = 76.14, which is lesser than than 4000000/6000 hence user is not conservative
+            - Put r = 22 then we get 1.22^31 = 475 which is lesser than 4000000/6000 hence user is not moderate
+            - Since we conclude user is aggressive
+    - IF the user risk is still not chosen then use the language of the user to determine risk
       - Example: "high growth needed" - aggressive 
       - Example: "steady growth needed" - moderate
       - Example: "not sure about risk" - conservative
       - Example: "worried about losing" - conservative
+      - Example: "I want to save as much as I can" - conservative
       - Example: "as soon as possible" - aggressive
     - Time can be either 'long term' , 'medium term' or 'short term' or if none match 'ready for anything'
       - Example: "till retirement" - long term
@@ -293,11 +315,13 @@ def call_tool(name, args):
         return {"error": f"Error executing {name}: {str(e)}"}
 
 def datesort(memory):
-    created = datetime.fromisoformat(memory.created_at)
-    if memory.updated_at:
-        updated = datetime.fromisoformat(memory.updated_at)
-        created = max(created,updated)
+    print(f"Memory: {memory}")
+    created = parse(memory.get("created_at"))
+    if getattr(memory, "updated_at", None):
+        updated = parse(memory.get("updated_at"))
+        created = max(created, updated)
     return created
+
 
 def memory(task,userid,messages=None):
     try:
@@ -337,13 +361,20 @@ def memory(task,userid,messages=None):
         client = Memory(config=configs)
 
         if task == "get_memory":
-            return client.get_all(user_id=str(userid),limit=10)
+            retval = []
+            res = client.get_all(user_id=str(userid),limit=10)
+            res = res.get("results",[])
+            for i in res:
+                if not i['metadata'] or i['metadata']["type"] != "finance_advice" and i["memory"]:
+                    retval.append(i)
+            print(f"Retval: {retval}")
+            return retval
         elif task == "add_memory":
             tosend = part_to_memory(messages)
             client.add(messages=tosend[0], user_id=str(userid))
             client.add(messages=tosend[1], user_id=str(userid),infer=False,metadata={"type":"finance_advice"})
         elif task == "get_last_advice":
-            res = client.search(filters={"type":"finance_advice"},user_id=str(userid),limit=100)
+            res = client.search(query="",filters={"type":"finance_advice"},user_id=str(userid),limit=100)
             res = res.get("results",[])
             if len(res) > 0:
                 maxmem = max(res,key=datesort)
@@ -434,7 +465,6 @@ def compare_advice(advice,prevadvice):
     except Exception as e:
         logger.error(f"Error in compare_advice: {e}")
         return ""
-
 
 def get_finance_advice(query,userid):
     user_profile = analyze_user_profile(query)
@@ -564,9 +594,8 @@ def get_finance_advice(query,userid):
             )
         )
         
-        advice_list,memory_list = memory("get_memory",userid)
+        memory_list = memory("get_memory",userid)
         logger.info(f"Memory list: {memory_list}")
-        logger.info(f"Advice list: {advice_list}")
         contents = [
             types.Content(
                 role="model", parts=[types.Part(text=f"{system_prompt}")]
@@ -576,17 +605,12 @@ def get_finance_advice(query,userid):
             )
         ]
         if memory_list:
-            results = memory_list.get("results")
-            for i in results:
+            print(f"Memory list: {memory_list}")
+            for i in memory_list:
                 contents.append(types.Content(
                     role="user", parts=[types.Part(text=i['memory'])]
                 ))
-        if advice_list:
-            for i in advice_list:
-                contents.append(types.Content(
-                    role="user", parts=[types.Part(text=f"Previous Advice Given: {i['memory']}")]
-                ))
-
+        
         loop = 1
         max_loops = 10
         
@@ -598,10 +622,10 @@ def get_finance_advice(query,userid):
                     config=config
                 )
 
-                logger.info(f"Response: {response}")
+                print(f"Response: {response}")
                 candidate = response.candidates[0]
                 parts = candidate.content.parts
-                logger.info(f"Parts: {parts}")
+                print(f"Parts: {parts}")
 
                 # Check if we have a final result
                 for part in parts:
@@ -620,9 +644,9 @@ def get_finance_advice(query,userid):
                     if part.function_call:
                         name = part.function_call.name
                         args = dict(part.function_call.args)  # Convert to dict
-                        logger.info(f"Calling tool: {name} with args: {args}")
+                        print(f"Calling tool: {name} with args: {args}")
                         result = call_tool(name, args)
-                        logger.info(f"Tool result obtained",len(result))
+                        print(f"Tool result obtained",len(result))
                         contents.append(types.Content(
                             role="user",
                             parts=[types.Part(function_call=FunctionCall(name=name,args=args,id=part.function_call.id))]
@@ -645,7 +669,6 @@ def get_finance_advice(query,userid):
             except Exception as e:
                 logger.error(f"Error in generation loop {loop}: {e}")
                 return f"Error: {str(e)}"
-        
         return "Maximum iterations reached without final result"
         
     except Exception as e:
@@ -654,8 +677,8 @@ def get_finance_advice(query,userid):
 
 if __name__ == "__main__":
     try:
-        result = get_finance_advice(
-            "I earn close to 100000 and i spend 10000 on fixed expenses, 10000 on variable and 15000 on casual expenses. I am of age 27 and i want to save money such that by 35 I should have at least 50 lakhs",101
-        )
+        result = get_finance_advice("I got laid off from my job, I get only a salary of 30000 with total expenses as 5000, My age is now 30 and I want to save as much as I can by 50",2)
+        # result = analyze_user_profile("I got laid off from my job, I get only a salary of 30000 with total expenses as 5000, My age is now 30 and I want to save as much as I can by 50")
+        print(result)
     except Exception as e:
         logger.error(f"Error running finance advisor: {e}")
