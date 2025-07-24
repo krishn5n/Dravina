@@ -54,19 +54,28 @@ def update_details():
 #Use the absolute path here
 def get_details(info:str):
     try:
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        # Generate a new signed URL
         abs_path:str = ""
         if info == "mutual_funds":
-            abs_path = os.getenv("FUNDS_BUCKET_URL","")
+            # abs_path = os.getenv("FUNDS_BUCKET_URL","")
+            abs_path = os.getenv("RELATIVE_FUNDS","")
         elif info == "mutual_funds_details":
-            abs_path = os.getenv("DETAILS_BUCKET_URL","")
+            # abs_path = os.getenv("DETAILS_BUCKET_URL","")
+            abs_path = os.getenv("RELATIVE_DETAILS","")
         elif info == "precious_stone_details":
-            abs_path = os.getenv("STONES_BUCKER_URL","")
+            # abs_path = os.getenv("STONES_BUCKER_URL","")
+            abs_path = os.getenv("RELATIVE_STONES","")
         else:
             return {"status":400}
 
-        print(abs_path)
-        response = requests.get(abs_path)
-        print(response.status_code)
+        signed_url = supabase.storage.from_("scrape-dravina-data").create_signed_url(
+            f"{abs_path}", 
+            expires_in=3600  # 1 hour expiration
+        )
+
+        url = signed_url["signedURL"]
+        response = requests.get(url)
         response.raise_for_status()
         if response.status_code != 200:
             return {"status":400}
